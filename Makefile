@@ -1,5 +1,5 @@
 build:
-	go build main.go && sudo ./main
+	clear && go build -o goping *.go && sudo ./goping
 
 
 .DEFAULT_GOAL := build
