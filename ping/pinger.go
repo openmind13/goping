@@ -1,9 +1,12 @@
 package ping
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"strings"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -11,32 +14,41 @@ import (
 )
 
 const (
-	defaultTimeout = 10 * time.Second
+	defaultLocalAddr = "172.23.187.32"
+)
 
+// Protocol Constants
+const (
 	protocolICMP     = 1
 	protocolIPv6ICMP = 58
 
-	defaultLocalAddr = "172.23.188.146"
-
-	targetIP  = "192.168.0.10"
-	targetIP2 = "google.com"
+	ip4icmp  = "ip4:icmp"
+	ip6icmp  = "ip6:ipv6-icmp"
+	udp4icmp = "upd4"
+	udp6icmp = "udp6"
 )
 
+// Errors
 var (
-	protocolIPv4 = map[string]string{"ip": "ip4:icmp", "udp": "udp4"}
-	protocolIPv6 = map[string]string{"ip": "ip6:ipv6-icmp", "udp": "udp6"}
+	errLocalAddrNotFound = errors.New("Local addr not found")
 )
 
 // Pinger struct
 type Pinger struct {
-	timeout        time.Duration
-	interval       time.Duration
+	interval time.Duration
+	pingTime time.Duration
+
 	localAddr      string
 	targetAddr     string
 	rawTargetAddr  string
 	transportLayer string
 	targetIPAddr   net.IPAddr
 	count          int
+
+	sendedPackets   int
+	recievedPackets int
+
+	channel chan os.Signal
 }
 
 // NewPinger - create new pinger
@@ -47,8 +59,7 @@ func NewPinger(targetAddr string) (*Pinger, error) {
 	}
 
 	pinger := Pinger{
-		timeout:       defaultTimeout,
-		interval:      1 * time.Second,
+		interval:      1000 * time.Millisecond,
 		localAddr:     defaultLocalAddr,
 		targetAddr:    ipAddr.String(),
 		rawTargetAddr: targetAddr,
@@ -56,26 +67,74 @@ func NewPinger(targetAddr string) (*Pinger, error) {
 		count:         -1,
 	}
 
+	// err = pinger.getLocalAddr()
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	pinger.setInformChan()
+
 	return &pinger, nil
 }
 
-// SetCount - set count of sending packets
-func (pinger *Pinger) SetCount(count int) {
-	pinger.count = count
+func (pinger *Pinger) setInformChan() {
+	pinger.channel = make(chan os.Signal, 1)
+	signal.Notify(pinger.channel, os.Interrupt)
 }
 
-// SetTimeout - set timeout for ping
-func (pinger *Pinger) SetTimeout(duration time.Duration) {
-	pinger.timeout = duration
+func (pinger *Pinger) catchSignal() {
+	switch <-pinger.channel {
+	case os.Interrupt:
+		fmt.Printf("\n--- %s ping statistics ---\n", pinger.rawTargetAddr)
+		fmt.Printf("%d packets transmitted, %d received\n",
+			pinger.sendedPackets,
+			pinger.recievedPackets)
+
+		pinger.sendedPackets = 0
+		pinger.recievedPackets = 0
+
+		os.Exit(0)
+	}
+}
+
+func (pinger *Pinger) getLocalAddr() error {
+	netInterfaces, err := net.Interfaces()
+	if err != nil {
+		return err
+	}
+	for _, i := range netInterfaces {
+		if strings.Contains(i.Flags.String(), "up") &&
+			strings.Contains(i.Flags.String(), "broadcast") &&
+			strings.Contains(i.Flags.String(), "multicast") {
+
+			ip, err := i.Addrs()
+			if err != nil {
+				return err
+			}
+
+			ipAddr, err := convertToIPAddr(ip[0])
+			if err != nil {
+				return err
+			}
+			pinger.localAddr = ipAddr.String()
+			return nil
+		}
+	}
+
+	return errLocalAddrNotFound
 }
 
 // Ping - start ping
 func (pinger *Pinger) Ping() error {
+	pinger.recievedPackets = 0
+	pinger.sendedPackets = 0
+
+	go pinger.catchSignal()
 
 	body := &icmp.Echo{
 		ID:   os.Getpid() & 0xffff,
 		Seq:  1,
-		Data: []byte("DEFAULT-MESSAGE"),
+		Data: []byte("DEFAULT-MESSAGE-HELLO-WORLD-FROM-GOLANG-PING"),
 	}
 
 	message := icmp.Message{
@@ -91,25 +150,29 @@ func (pinger *Pinger) Ping() error {
 
 	replyBuffer := make([]byte, 512)
 
-	conn, err := icmp.ListenPacket("ip4:icmp", pinger.localAddr)
+	conn, err := icmp.ListenPacket(ip4icmp, pinger.localAddr)
 	if err != nil {
 		fmt.Println("error in icmp.ListenPacket()")
 		return err
 	}
-	err = conn.SetDeadline(time.Now().Add(pinger.timeout))
-	if err != nil {
-		return err
-	}
 
-	fmt.Printf("PING (%v)\n", pinger.rawTargetAddr)
+	// set deadline for max duration for ping
+	// err = conn.SetDeadline(time.Now().Add(pinger.timeout))
+	// if err != nil {
+	// 	return err
+	// }
+
+	fmt.Printf("PING (%v) %d bytes of data\n", pinger.rawTargetAddr, len(binaryMessage))
 	i := pinger.count
-	for i < 0 {
 
+	for i < 0 {
 		start := time.Now()
 		_, err := conn.WriteTo(binaryMessage, &pinger.targetIPAddr)
 		if err != nil {
+			fmt.Printf("Error in WriteTo()\n")
 			return err
 		}
+		pinger.sendedPackets++
 
 		//fmt.Printf("send %d bytes to (%s)\n", byteCount, pinger.targetAddr)
 
@@ -117,6 +180,7 @@ func (pinger *Pinger) Ping() error {
 		if err != nil {
 			return err
 		}
+		pinger.recievedPackets++
 
 		responseTime := time.Since(start)
 		replyMsg, err := icmp.ParseMessage(protocolICMP, replyBuffer[:recvByteCount])
@@ -126,7 +190,10 @@ func (pinger *Pinger) Ping() error {
 
 		switch replyMsg.Type {
 		case ipv4.ICMPTypeEchoReply:
-			fmt.Printf("%d bytes from (%s) time=%v\n", recvByteCount, peer, responseTime)
+			fmt.Printf("%d bytes from (%s) time=%v\n",
+				recvByteCount,
+				peer,
+				responseTime)
 		default:
 			fmt.Println("have not a reply message")
 			fmt.Println(replyMsg)
@@ -136,4 +203,14 @@ func (pinger *Pinger) Ping() error {
 	}
 
 	return nil
+}
+
+// SetCount - set count of sending packets
+func (pinger *Pinger) SetCount(count int) {
+	pinger.count = count
+}
+
+// SetInterval - set timeout for ping
+func (pinger *Pinger) SetInterval(duration time.Duration) {
+	pinger.interval = duration
 }
