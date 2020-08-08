@@ -1,27 +1,46 @@
 package main
 
-import "github.com/openmind13/goping/ping"
+import (
+	"fmt"
+	"os"
+	"os/signal"
 
-const targetIP = "192.168.0.10"
-const targetIP2 = "google.com"
+	"github.com/openmind13/goping/ping"
+)
+
+const (
+	localAddr = "172.23.177.246"
+
+	targetIP       = "192.168.0.10"
+	targetIPGoogle = "google.com"
+)
 
 func main() {
-	p := ping.NewPinger()
-	p.Ping(targetIP)
+	fmt.Printf("======\n")
 
-	// addr, time, err := ping.Ping(targetIP2)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println(addr)
-	// fmt.Println(time)
+	pinger, err := ping.NewPinger(targetIPGoogle)
+	if err != nil {
+		panic(err)
+	}
 
-	// addr, err := ping.GetLocalAddr()
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println(addr)
-	// fmt.Println(addr.Network())
-	// address := addr.String()
-	// fmt.Println(address)
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt)
+
+	go catchSignal(ch)
+
+	err = pinger.Ping()
+	if err != nil {
+		panic(err)
+	}
+
+}
+
+func catchSignal(ch chan os.Signal) {
+	switch <-ch {
+	case os.Interrupt:
+		fmt.Printf("\nprint statistics\n")
+		os.Exit(0)
+	default:
+
+	}
 }
