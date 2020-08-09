@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/openmind13/goping/ping"
 )
 
@@ -13,7 +11,7 @@ const (
 )
 
 func main() {
-	fmt.Printf("======\n")
+	// fmt.Printf("======\n")
 
 	// if len(os.Args) < 2 {
 	// 	fmt.Printf("enter IP or domain name\n")
@@ -22,24 +20,13 @@ func main() {
 	// 	fmt.Printf("%s\n", os.Args[1])
 	// }
 
-	pinger, err := ping.NewPinger("google.com")
+	pinger, err := ping.NewPinger(gatewayIP)
 	if err != nil {
 		panic(err)
 	}
-
-	// go catchSignal(ch)
 
 	err = pinger.Ping()
 	if err != nil {
 		panic(err)
 	}
-
 }
-
-// func catchSignal(ch chan os.Signal) {
-// 	switch <-ch {
-// 	case os.Interrupt:
-// 		fmt.Printf("\nprint statistics\n")
-// 		os.Exit(0)
-// 	}
-// }
