@@ -164,9 +164,10 @@ func (pinger *Pinger) recvMessages() error {
 
 			switch replyMsg.Type {
 			case ipv4.ICMPTypeEchoReply:
-				fmt.Printf("%d bytes from (%s) time=%v\n",
+				fmt.Printf("%d bytes from (%s) icmp_seq=%d time=%v\n",
 					recvByteCount,
 					peer,
+					pinger.sendedPackets,
 					time.Since(pinger.lastSendingPacketTime),
 				)
 			default:
@@ -182,7 +183,7 @@ func (pinger *Pinger) recvMessages() error {
 func (pinger *Pinger) sendMessages() error {
 	fmt.Printf("=========================================\n")
 	fmt.Printf("PING (%s) send %d bytes of data\n",
-		pinger.stringTargetAddr,
+		pinger.rawStringTargetAddr,
 		len(pinger.binaryMessage))
 
 	for {
