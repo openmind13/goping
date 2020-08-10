@@ -13,10 +13,6 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-const (
-	defaultLocalAddr = "172.27.58.234"
-)
-
 // Protocol Constants
 const (
 	protocolICMP     = 1
@@ -41,12 +37,14 @@ type Pinger struct {
 	startPingTime         time.Time
 	lastSendingPacketTime time.Time
 
-	localAddr        string
-	targetAddr       string
-	stringTargetAddr string
-	transportLayer   string
-	targetIPAddr     net.IPAddr
-	count            int
+	stringLocalAddr string
+	localAddr       *net.IPAddr
+
+	stringTargetAddr    string
+	rawStringTargetAddr string
+	targetIPAddr        *net.IPAddr
+
+	count int
 
 	message       icmp.Message
 	binaryMessage []byte
@@ -69,13 +67,12 @@ func NewPinger(targetAddr string) (*Pinger, error) {
 	}
 
 	pinger := Pinger{
-		interval:         1000 * time.Millisecond,
-		localAddr:        defaultLocalAddr,
-		targetAddr:       ipAddr.String(),
-		stringTargetAddr: targetAddr,
-		targetIPAddr:     *ipAddr,
-		count:            -1, // -1 for ping in infinity loop
-		replyBuffer:      [512]byte{},
+		interval:            1000 * time.Millisecond,
+		stringTargetAddr:    ipAddr.String(),
+		rawStringTargetAddr: targetAddr,
+		targetIPAddr:        ipAddr,
+		count:               -1, // -1 for ping in infinity loop
+		replyBuffer:         [512]byte{},
 	}
 
 	err = pinger.setLocalAddr()
@@ -123,7 +120,7 @@ func (pinger *Pinger) Ping() error {
 	pinger.recievedPackets = 0
 	pinger.sendedPackets = 0
 
-	conn, err := icmp.ListenPacket(ip4icmp, pinger.localAddr)
+	conn, err := icmp.ListenPacket(ip4icmp, pinger.localAddr.String())
 	if err != nil {
 		fmt.Println("error in icmp.ListenPacket()")
 		return err
@@ -194,7 +191,7 @@ func (pinger *Pinger) sendMessages() error {
 			return nil
 		default:
 			pinger.lastSendingPacketTime = time.Now()
-			_, err := pinger.conn.WriteTo(pinger.binaryMessage, &pinger.targetIPAddr)
+			_, err := pinger.conn.WriteTo(pinger.binaryMessage, pinger.targetIPAddr)
 			// _, err := conn.WriteTo(pinger.binaryMessage, &pinger.targetIPAddr)
 			if err != nil {
 				fmt.Printf("Error in WriteTo()\n")
@@ -268,20 +265,30 @@ func (pinger *Pinger) setLocalAddr() error {
 			strings.Contains(i.Flags.String(), "broadcast") &&
 			strings.Contains(i.Flags.String(), "multicast") {
 
-			ipaddr, err := i.Addrs()
+			ipaddrs, err := i.Addrs()
 			if err != nil {
 				return err
 			}
 
-			for _, ip := range ipaddr {
-				fmt.Println(ip)
-			}
-			// fmt.Println(ipaddr)
+			for _, addr := range ipaddrs {
+				// fmt.Println(addr)
 
-			//pinger.localAddr = ipAddr.String()
+				switch v := addr.(type) {
+				case *net.IPAddr:
+					//ip := v.IP
+					//fmt.Println(ip)
+				case *net.IPNet:
+					ip := v.IP
+					// fmt.Println(ip)
+					pinger.localAddr = &net.IPAddr{
+						IP:   ip,
+						Zone: "",
+					}
+					return nil
+				}
+			}
 			return nil
 		}
 	}
-
 	return errLocalAddrNotFound
 }
