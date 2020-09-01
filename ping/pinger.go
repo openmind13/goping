@@ -42,7 +42,7 @@ type Pinger struct {
 
 	stringTargetAddr    string
 	rawStringTargetAddr string
-	targetIPAddr        *net.IPAddr
+	targetAddr          *net.IPAddr
 
 	count int
 
@@ -70,19 +70,17 @@ func NewPinger(targetAddr string) (*Pinger, error) {
 		interval:            1000 * time.Millisecond,
 		stringTargetAddr:    ipAddr.String(),
 		rawStringTargetAddr: targetAddr,
-		targetIPAddr:        ipAddr,
+		targetAddr:          ipAddr,
 		count:               -1, // -1 for ping in infinity loop
 		replyBuffer:         [512]byte{},
 	}
 
-	err = pinger.setLocalAddr()
-	if err != nil {
+	if err = pinger.setLocalAddr(); err != nil {
 		return nil, err
 	}
 
 	pinger.setSignalChan()
-	err = pinger.setMessage()
-	if err != nil {
+	if err = pinger.setMessage(); err != nil {
 		return nil, err
 	}
 
@@ -134,8 +132,7 @@ func (pinger *Pinger) Ping() error {
 	pinger.startPingTime = time.Now()
 
 	go pinger.recvMessages()
-	err = pinger.sendMessages()
-	if err != nil {
+	if err = pinger.sendMessages(); err != nil {
 		return err
 	}
 
@@ -192,12 +189,12 @@ func (pinger *Pinger) sendMessages() error {
 			return nil
 		default:
 			pinger.lastSendingPacketTime = time.Now()
-			_, err := pinger.conn.WriteTo(pinger.binaryMessage, pinger.targetIPAddr)
-			// _, err := conn.WriteTo(pinger.binaryMessage, &pinger.targetIPAddr)
-			if err != nil {
+			if _, err := pinger.conn.WriteTo(pinger.binaryMessage, pinger.targetAddr); err != nil {
 				fmt.Printf("Error in WriteTo()\n")
 				return err
 			}
+			// _, err := conn.WriteTo(pinger.binaryMessage, &pinger.targetIPAddr)
+
 			pinger.sendedPackets++
 			time.Sleep(pinger.interval)
 		}
@@ -223,10 +220,10 @@ func (pinger *Pinger) SetInterval(duration time.Duration) {
 // SetDeadline ...
 func (pinger *Pinger) SetDeadline(duration time.Duration) error {
 	// set deadline for max duration for ping
-	err := pinger.conn.SetDeadline(time.Now().Add(pinger.deadline))
-	if err != nil {
+	if err := pinger.conn.SetDeadline(time.Now().Add(pinger.deadline)); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -261,6 +258,7 @@ func (pinger *Pinger) setLocalAddr() error {
 	if err != nil {
 		return err
 	}
+
 	for _, i := range netInterfaces {
 		if strings.Contains(i.Flags.String(), "up") &&
 			strings.Contains(i.Flags.String(), "broadcast") &&

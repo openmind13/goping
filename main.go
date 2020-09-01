@@ -26,8 +26,7 @@ func main() {
 		panic(err)
 	}
 
-	err = pinger.Ping()
-	if err != nil {
+	if err = pinger.Ping(); err != nil {
 		panic(err)
 	}
 }
