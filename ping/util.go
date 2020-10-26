@@ -15,17 +15,14 @@ func getLocalAddr() (*net.IPAddr, error) {
 		if strings.Contains(i.Flags.String(), "up") &&
 			strings.Contains(i.Flags.String(), "broadcast") &&
 			strings.Contains(i.Flags.String(), "multicast") {
-
 			ip, err := i.Addrs()
 			if err != nil {
 				return nil, err
 			}
-
 			ipAddr, err := convertToIPAddr(ip[0])
 			return ipAddr, nil
 		}
 	}
-
 	return nil, errors.New("Local addr not found")
 }
 

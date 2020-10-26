@@ -65,7 +65,6 @@ func NewPinger(targetAddr string) (*Pinger, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	pinger := Pinger{
 		interval:            1000 * time.Millisecond,
 		stringTargetAddr:    ipAddr.String(),
@@ -74,16 +73,13 @@ func NewPinger(targetAddr string) (*Pinger, error) {
 		count:               -1, // -1 for ping in infinity loop
 		replyBuffer:         [512]byte{},
 	}
-
 	if err = pinger.setLocalAddr(); err != nil {
 		return nil, err
 	}
-
 	pinger.setSignalChan()
 	if err = pinger.setMessage(); err != nil {
 		return nil, err
 	}
-
 	return &pinger, nil
 }
 
@@ -93,7 +89,7 @@ func (pinger *Pinger) setSignalChan() {
 	signal.Notify(pinger.signalChannel, os.Interrupt)
 }
 
-// catchExitSignal ...
+// catchExitSignal listen pinger.signalChannel
 func (pinger *Pinger) catchExitSignal() {
 	switch <-pinger.signalChannel {
 	case os.Interrupt:
@@ -106,7 +102,6 @@ func (pinger *Pinger) catchExitSignal() {
 			time.Since(pinger.startPingTime),
 		)
 		fmt.Printf("=========================================\n")
-
 		pinger.sendedPackets = 0
 		pinger.recievedPackets = 0
 		os.Exit(0)
@@ -117,7 +112,6 @@ func (pinger *Pinger) catchExitSignal() {
 func (pinger *Pinger) Ping() error {
 	pinger.recievedPackets = 0
 	pinger.sendedPackets = 0
-
 	conn, err := icmp.ListenPacket(ip4icmp, pinger.localAddr.String())
 	if err != nil {
 		fmt.Println("error in icmp.ListenPacket()")
@@ -125,40 +119,31 @@ func (pinger *Pinger) Ping() error {
 	}
 	pinger.conn = conn
 	defer pinger.conn.Close()
-
 	go pinger.catchExitSignal()
-
-	// start ping time
 	pinger.startPingTime = time.Now()
-
 	go pinger.recvMessages()
 	if err = pinger.sendMessages(); err != nil {
 		return err
 	}
-
 	return nil
 }
 
-// recvMessages ...
+// recvMessages recv messages until <-pinger.signalChannel
 func (pinger *Pinger) recvMessages() error {
 	for {
-
 		select {
 		case <-pinger.signalChannel:
 			os.Exit(0)
-
 		default:
 			recvByteCount, peer, err := pinger.conn.ReadFrom(pinger.replyBuffer[:])
 			if err != nil {
 				return err
 			}
 			pinger.recievedPackets++
-
 			replyMsg, err := icmp.ParseMessage(protocolICMP, pinger.replyBuffer[:recvByteCount])
 			if err != nil {
 				return err
 			}
-
 			switch replyMsg.Type {
 			case ipv4.ICMPTypeEchoReply:
 				fmt.Printf("%d bytes from (%s) icmp_seq=%d time=%v\n",
@@ -172,17 +157,15 @@ func (pinger *Pinger) recvMessages() error {
 				fmt.Println(replyMsg)
 			}
 		}
-
 	}
 }
 
-// sendMessages ...
+// sendMessages start send messages until not <-pinger.signalChannel
 func (pinger *Pinger) sendMessages() error {
 	fmt.Printf("=========================================\n")
 	fmt.Printf("PING (%s) send %d bytes of data\n",
 		pinger.rawStringTargetAddr,
 		len(pinger.binaryMessage))
-
 	for {
 		select {
 		case <-pinger.signalChannel:
@@ -194,17 +177,10 @@ func (pinger *Pinger) sendMessages() error {
 				return err
 			}
 			// _, err := conn.WriteTo(pinger.binaryMessage, &pinger.targetIPAddr)
-
 			pinger.sendedPackets++
 			time.Sleep(pinger.interval)
 		}
-
 	}
-}
-
-// Stop ...
-func (pinger *Pinger) Stop() {
-
 }
 
 // SetCount - set count of sending packets
@@ -219,11 +195,9 @@ func (pinger *Pinger) SetInterval(duration time.Duration) {
 
 // SetDeadline ...
 func (pinger *Pinger) SetDeadline(duration time.Duration) error {
-	// set deadline for max duration for ping
 	if err := pinger.conn.SetDeadline(time.Now().Add(pinger.deadline)); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -234,51 +208,40 @@ func (pinger *Pinger) setMessage() error {
 		Seq:  1,
 		Data: []byte("DEFAULT-MESSAGE-HELLO-WORLD-FROM-GOLANG-PING"),
 	}
-
 	message := icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Code: 0,
 		Body: body,
 	}
-
 	binaryMessage, err := message.Marshal(nil)
 	if err != nil {
 		return err
 	}
-
 	pinger.message = message
 	pinger.binaryMessage = binaryMessage
-
 	return nil
 }
 
-// setLocalAddr ...
+// setLocalAddr for finding local add on interface
 func (pinger *Pinger) setLocalAddr() error {
 	netInterfaces, err := net.Interfaces()
 	if err != nil {
 		return err
 	}
-
 	for _, i := range netInterfaces {
 		if strings.Contains(i.Flags.String(), "up") &&
 			strings.Contains(i.Flags.String(), "broadcast") &&
 			strings.Contains(i.Flags.String(), "multicast") {
-
 			ipaddrs, err := i.Addrs()
 			if err != nil {
 				return err
 			}
-
 			for _, addr := range ipaddrs {
-				// fmt.Println(addr)
-
 				switch v := addr.(type) {
 				case *net.IPAddr:
-					//ip := v.IP
-					//fmt.Println(ip)
+					// fmt.Println(v.IP)
 				case *net.IPNet:
 					ip := v.IP
-					// fmt.Println(ip)
 					pinger.localAddr = &net.IPAddr{
 						IP:   ip,
 						Zone: "",
